@@ -1,3 +1,6 @@
+<cfif FindNoCase("akimtechcloud.com", CGI.server_name)>
+	<cflocation url="default.cfm">
+</cfif>
 
 	<cfinclude template="shared/_header.cfm">
 			<!---========================================================================= --->
