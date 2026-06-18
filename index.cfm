@@ -103,31 +103,16 @@
 </style>
 </head>
 <body>
-<header>
-  <div class="wrap nav">
-    <a class="logo" href="#">
-      <svg class="mark" viewBox="0 0 60 60" fill="none">
-        <path d="M30 6 54 22 30 38 6 22Z" fill="#ffffff"/>
-        <path d="M30 18 54 34 30 50 6 34Z" fill="#7aa7ff"/>
-        <path d="M30 30 47 41 30 52 13 41Z" fill="#1f4fff"/>
-      </svg>
-      <span class="name" style="color:#fff">AkimTech <span style="color:#7aa7ff">Cloud</span></span>
-    </a>
-    <ul>
-      <li><a href="#services">Services</a></li>
-      <li><a href="#">Compliance</a></li>
-      <li><a href="#">Platform</a></li>
-      <li><a href="#">Resources</a></li>
-    </ul>
-    <a class="btn btn-white" href="#contact">Contact Sales →</a>
-  </div>
-</header>
+
+<!--- Header --->
+<cfinclude template="includes/header.cfm">
+
 
 <section class="hero">
   <div class="wrap">
     <div class="eyebrow">Platform as a Service</div>
     <h1>The mission-grade cloud for federal teams.</h1>
-    <p class="lead">Compute, storage, and managed platforms with 99.99% uptime — secured to the standards agencies and regulated enterprises depend on.</p>
+    <p class="lead">As a partner of IONOS, we provide compute, storage, and managed platforms with 99.99% uptime — secured to the standards agencies and regulated enterprises depend on.</p>
     <div class="hero-cta">
       <a class="btn btn-white" href="#contact">Contact Sales →</a>
       <a class="btn btn-line" href="#services">Explore Services</a>
@@ -208,7 +193,7 @@
       </ul>
       <a class="btn btn-pri" href="#contact" style="margin-top:8px">Contact Sales →</a>
     </div>
-    <div class="ph"><span class="lbl">[ server rack photo ]</span></div>
+    <div class="ph"><img src="images/server_logo.jpg" alt="Server rack" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block"></div>
   </div>
 </section>
 
