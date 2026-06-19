@@ -13,7 +13,7 @@
       <li><a href="index.cfm#services">Services</a></li>
       <li><a href="compliance.cfm">Compliance</a></li>
       <li><a href="platform.cfm">Platform</a></li>
-      <li><a href="max.cfm">The Ai "Max" Platform</a></li>
+      <li><a href="max.cfm">Max Ai</a></li>
     </ul>
     <a class="btn btn-white" href="index.cfm#contact">Contact Sales →</a>
   </div>
