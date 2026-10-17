@@ -7,11 +7,15 @@ on:
     types:
       - closed
 
+# Never run two deploys to the same server at once
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
 jobs:
   deploy:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -28,4 +32,11 @@ jobs:
 
       - name: Deploy to Production Server
         run: |
-         rsync -avz --exclude='.git' --exclude='.github' --exclude='.gitignore' ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:${{ secrets.PROD_WORK_DIR }}
+          rsync -avz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.vscode' \
+            --exclude='.idea' \
+            --exclude='.DS_Store' \
+            --exclude='.gitignore' \
+            ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:${{ secrets.PROD_WORK_DIR }}
