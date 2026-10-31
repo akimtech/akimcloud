@@ -166,7 +166,7 @@ DEVELOPMENT ENVIRONMENT
 
 <main style="flex: 1 1 480px; min-width: 0; box-sizing: border-box; padding: 48px 24px; display: flex; align-items: center; justify-content: center">
 <form action="lock.cfm" method="post" style="width: 100%; max-width: 420px; box-sizing: border-box; background: #ffffff; border: 1px solid #e1e6f2; border-radius: 16px; padding: 40px; display: flex; flex-direction: column; gap: 22px; box-shadow: 0 12px 40px rgba(15,23,51,0.08)">
-<cfif IsDefined("#url.domain_path#")>
+<cfif structKeyExists(url, "domain_path")>
 <input type="hidden" name="returnUrl" value="<cfoutput>#url.domain_path#</cfoutput>">
 </cfif>
     <div style="display: flex; flex-direction: column; gap: 8px">
@@ -174,7 +174,7 @@ DEVELOPMENT ENVIRONMENT
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f5bff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
 </div>
 <h2 style="margin: 8px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em">Sign in to continue</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #4a5577">You’re requesting <strong style="color: #0f1733"><cfif IsDefined("#url.domain_path#")><cfoutput>#url.domain_path#</cfoutput><cfelse>dev.domain.com</cfif></strong></p>
+<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #4a5577">You’re requesting <strong style="color: #0f1733"><cfif structKeyExists(url, "domain_path")><cfoutput>#url.domain_path#</cfoutput><cfelse>dev.domain.com</cfif></strong></p>
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 8px">
@@ -212,3 +212,5 @@ return { accent: this.props.accent ?? '#2f5bff' };
 </script>
 </body>
 </html>
+
+<cfdump var="#url#" label="URL Variables">
