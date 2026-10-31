@@ -1,3 +1,132 @@
+<cfscript>
+/* ============================================================================
+   akimtechcloud.com/lock/index.cfm — central sign-in for gated dev sites.
+   Checks username + password + 6-digit authenticator passcode, then sends the
+   user back to returnUrl with a signed, 2-minute gateToken.
+   ============================================================================ */
+
+MAX_ATTEMPTS = 5;
+LOCKOUT_MIN  = 15;
+TOKEN_TTL    = 120;   // seconds
+
+errorMsg = "";
+param name="session.lockAttempts" default=0;
+param name="session.lockUntil"    default="";
+
+// ---- validate returnUrl: full http(s) URL to an allowed host only ----------
+function safeReturn(required string u) {
+    try {
+        var uri  = createObject("java", "java.net.URI").init(u);
+        var sch  = lcase(uri.getScheme() ?: "");
+        var host = lcase(uri.getHost() ?: "");
+        var port = uri.getPort();
+        if ( !listFind("http,https", sch) || !len(host) ) return {};
+        var isLocal = listFind("localhost,127.0.0.1", host);
+        var hostPort = host & ( port > 0 ? ":" & port : "" );
+        var ok = listFindNoCase(application.ALLOWED_RETURN_HOSTS, hostPort)
+              || listFindNoCase(application.ALLOWED_RETURN_HOSTS, host) && (port < 0 || (isLocal && application.ALLOW_ANY_LOCAL_PORT));
+        if ( !ok ) return {};
+        if ( sch == "http" && !isLocal ) return {};          // only localhost may use plain http
+        return { url: u, aud: hostPort };
+    } catch (any e) { return {}; }
+}
+
+returnUrl = structKeyExists(form, "returnUrl") ? form.returnUrl : (url.returnUrl ?: "");
+ret = safeReturn(returnUrl);
+
+function sendBack(required string user) {
+    var expires = int( createObject("java", "java.lang.System").currentTimeMillis() / 1000 ) + TOKEN_TTL;
+    var payload = toBase64( charsetDecode( user & "|" & expires & "|" & ret.aud, "utf-8" ) );
+    var token   = payload & "." & hmac(payload, application.GATE_SECRET, "HMACSHA256");
+    location( url = ret.url & ( find("?", ret.url) ? "&" : "?" ) & "gateToken=" & encodeForURL(token), addToken = false );
+}
+
+// Already signed in here (another dev site)? Send straight back.
+if ( cgi.request_method == "GET" && !structIsEmpty(ret) && (session.devUser ?: "") != "" ) sendBack(session.devUser);
+
+// ---- TOTP (RFC 6238, 30s step, SHA1, 6 digits) -----------------------------
+function base32Decode(required string s) {
+    var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    var bits = "";
+    var clean = uCase(reReplace(s, "[^A-Za-z2-7]", "", "all"));
+    for (var i = 1; i <= len(clean); i++) bits &= right("00000" & formatBaseN(find(mid(clean, i, 1), alphabet) - 1, 2), 5);
+    var out = createObject("java", "java.io.ByteArrayOutputStream").init();
+    for (var j = 1; j + 7 <= len(bits); j += 8) out.write( inputBaseN(mid(bits, j, 8), 2) );
+    return out.toByteArray();
+}
+function totpAt(required binary key, required numeric counter) {
+    var buf = createObject("java", "java.nio.ByteBuffer").allocate(8);
+    buf.putLong( javaCast("long", counter) );
+    var mac = createObject("java", "javax.crypto.Mac").getInstance("HmacSHA1");
+    mac.init( createObject("java", "javax.crypto.spec.SecretKeySpec").init(key, "HmacSHA1") );
+    var h = mac.doFinal( buf.array() );
+    var off = bitAnd(h[arrayLen(h)], 15) + 1;
+    var bin = bitOr( bitOr( bitSHLN(bitAnd(h[off],127),24), bitSHLN(bitAnd(h[off+1],255),16) ),
+                     bitOr( bitSHLN(bitAnd(h[off+2],255),8), bitAnd(h[off+3],255) ) );
+    return right("000000" & (bin mod 1000000), 6);
+}
+function verifyTotp(required string secret, required string code) {
+    if ( !reFind("^\d{6}$", code) ) return false;
+    var key  = base32Decode(secret);
+    var step = int( (createObject("java","java.lang.System").currentTimeMillis() / 1000) / 30 );
+    for (var d = -1; d <= 1; d++) if ( totpAt(key, step + d) == code ) return true;
+    return false;
+}
+
+// ---- handle POST ------------------------------------------------------------
+if ( cgi.request_method == "POST" ) {
+    if ( structIsEmpty(ret) ) {
+        errorMsg = "This sign-in link is invalid. Go back to the site you were trying to open.";
+    }
+    else if ( isDate(session.lockUntil) && now() < session.lockUntil ) {
+        errorMsg = "Too many attempts. Try again in a few minutes.";
+    }
+    else if ( !structKeyExists(form, "csrf") || !CSRFverifyToken(form.csrf, "lock") ) {
+        errorMsg = "Your session expired. Please try again.";
+    }
+    else {
+        uname = trim(form.username ?: "");
+        pwd   = form.password ?: "";
+        code  = reReplace(form.passcode ?: "", "\s", "", "all");
+
+        q = queryExecute(
+            "SELECT password_hash, password_salt, totp_secret FROM dev_gate_users WHERE username = :u AND is_active = 1",
+            { u: { value: uname, cfsqltype: "cf_sql_varchar" } },
+            { datasource: application.DSN }
+        );
+
+        ok = false;
+        if ( q.recordCount == 1 ) {
+            h = q.password_salt & pwd;
+            for (i = 1; i <= 10000; i++) h = hash(h, "SHA-512");
+            ok = ( compare(h, q.password_hash) == 0 ) && verifyTotp(q.totp_secret, code);
+        }
+
+        if ( ok ) {
+            sessionRotate();
+            session.devUser      = uname;
+            session.lockAttempts = 0;
+            session.lockUntil    = "";
+            sendBack(uname);
+        }
+        else {
+            session.lockAttempts++;
+            if ( session.lockAttempts >= MAX_ATTEMPTS ) {
+                session.lockUntil    = dateAdd("n", LOCKOUT_MIN, now());
+                session.lockAttempts = 0;
+            }
+            errorMsg = "The username, password or passcode is incorrect.";
+        }
+    }
+}
+else if ( structIsEmpty(ret) ) {
+    errorMsg = "Open the dev site you want first — it will bring you here to sign in.";
+}
+
+csrfToken     = CSRFGenerateToken("lock", true);
+requestedHost = structIsEmpty(ret) ? "a protected dev site" : ret.aud;
+</cfscript>
+<cfcontent reset="true">
 <!doctype html>
 <html lang="en">
 <head>
@@ -37,12 +166,15 @@ DEVELOPMENT ENVIRONMENT
 
 <main style="flex: 1 1 480px; min-width: 0; box-sizing: border-box; padding: 48px 24px; display: flex; align-items: center; justify-content: center">
 <form action="lock.cfm" method="post" style="width: 100%; max-width: 420px; box-sizing: border-box; background: #ffffff; border: 1px solid #e1e6f2; border-radius: 16px; padding: 40px; display: flex; flex-direction: column; gap: 22px; box-shadow: 0 12px 40px rgba(15,23,51,0.08)">
-<div style="display: flex; flex-direction: column; gap: 8px">
+<cfif IsDefined("#url.domain_path#")>
+<input type="hidden" name="returnUrl" value="<cfoutput>#url.domain_path#</cfoutput>">
+</cfif>
+    <div style="display: flex; flex-direction: column; gap: 8px">
 <div style="width: 48px; height: 48px; border-radius: 12px; background: #e9eeff; display: flex; align-items: center; justify-content: center">
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f5bff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
 </div>
 <h2 style="margin: 8px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em">Sign in to continue</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #4a5577">You’re requesting <strong style="color: #0f1733">dev.domain.com</strong></p>
+<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #4a5577">You’re requesting <strong style="color: #0f1733"><cfif IsDefined("#url.domain_path#")><cfoutput>#url.domain_path#</cfoutput><cfelse>dev.domain.com</cfif></strong></p>
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 8px">
